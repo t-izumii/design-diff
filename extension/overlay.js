@@ -10,10 +10,17 @@
   // パネルの位置はページをまたいで共通にする
   const PANEL_STORE_KEY = `${STORE_PREFIX}panel`;
   // 倍率と位置（X・Y）は案件ごとの images.json に CLI 経由で保存するため、ここには保存しない
-  const DEFAULT_STATE = { visible: true, opacity: 0.5, blend: 'normal', image: '', collapsed: false };
+  // locked が false のあいだは、矢印キーで画像を動かす
+  const DEFAULT_STATE = { visible: true, opacity: 0.5, blend: 'normal', image: '', collapsed: false, locked: true };
   // 矢印キーの連打などで書き込みが続かないよう、操作が止まってから保存する
   const SAVE_DELAY = 400;
+  // 位置の移動量。Shift を押しながらだと大きく動かす
+  const MOVE_STEP = 1;
+  const MOVE_STEP_LARGE = 10;
+  const BLENDS = ['normal', 'invert'];
+  const ARROWS = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1] };
   const ZOOM_STEP = 0.1;
+  const ZOOM_STEP_FINE = 0.01;
   const ZOOM_MIN = 0.01;
   const ZOOM_MAX = 10;
   const PANEL_MARGIN = 12;
@@ -79,12 +86,14 @@
     const stored = readStore(storeKey);
     const state = { ...DEFAULT_STATE };
     for (const key of Object.keys(DEFAULT_STATE)) if (key in stored) state[key] = stored[key];
+    // 以前の版の「差分」は「反転」に置き換えた
+    if (state.blend === 'difference') state.blend = 'invert';
+    if (!BLENDS.includes(state.blend)) state.blend = DEFAULT_STATE.blend;
     const save = () => writeStore(storeKey, state);
 
     const host = document.createElement('div');
     host.setAttribute('data-design-diff', '');
     host.style.cssText = 'position:absolute;top:0;left:0;width:0;height:0;margin:0;padding:0;border:0;';
-    // host に z-index を付けると重なりの文脈が閉じ、差分（mix-blend-mode）がページと合成されなくなる
     const root = host.attachShadow({ mode: 'open' });
     root.innerHTML = `
       <style>${STYLE}</style>
@@ -93,20 +102,24 @@
         <header class="panel-header" title="ドラッグでパネルを移動">
           <span class="grip" aria-hidden="true"></span>
           <strong class="title">Design Diff</strong>
-          <span class="route"></span>
-          <button type="button" class="icon-button corner" aria-label="パネルを次の隅へ移動" title="パネルを次の隅へ移動">
-            <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M2.5 6V2.5H6M10 2.5h3.5V6M13.5 10v3.5H10M6 13.5H2.5V10"/></svg>
-          </button>
+          <span class="header-actions">
+            <button type="button" class="icon-button toggle visible-toggle" aria-label="重ねて表示" title="重ねて表示（Alt+Shift+D）">
+              <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M1.5 8s2.5-4.5 6.5-4.5S14.5 8 14.5 8 12 12.5 8 12.5 1.5 8 1.5 8z"/><circle cx="8" cy="8" r="2"/><path class="when-off" d="M2.5 2.5l11 11"/></svg>
+            </button>
+            <button type="button" class="icon-button toggle invert-toggle" aria-label="色を反転" title="色を反転">
+              <svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="5.5"/><path class="fill" d="M8 2.5a5.5 5.5 0 0 1 0 11z"/></svg>
+            </button>
+            <button type="button" class="icon-button toggle lock" aria-label="位置をロック">
+              <svg viewBox="0 0 16 16" aria-hidden="true"><rect x="3.5" y="7" width="9" height="6.5" rx="1"/><path class="when-on" d="M5.5 7V5a2.5 2.5 0 0 1 5 0v2"/><path class="when-off" d="M5.5 7V5a2.5 2.5 0 0 1 4.9-.7"/></svg>
+            </button>
+          </span>
           <button type="button" class="icon-button collapse" aria-label="操作パネル" aria-controls="panel-body">
             <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M4 6l4 4 4-4"/></svg>
           </button>
         </header>
         <div class="panel-body" id="panel-body">
           <div class="group">
-            <label class="switch-row">
-              <span>重ねて表示 <kbd>Alt+Shift+D</kbd></span>
-              <input type="checkbox" role="switch" name="visible">
-            </label>
+            <p class="route"></p>
             <label class="field">
               <span class="field-label">画像</span>
               <select name="image"></select>
@@ -118,13 +131,6 @@
                 <output></output>
               </span>
             </label>
-            <div class="field">
-              <span class="field-label" id="blend-label">重ね方</span>
-              <div class="segmented" role="radiogroup" aria-labelledby="blend-label">
-                <label><input type="radio" name="blend" value="normal"><span>通常</span></label>
-                <label><input type="radio" name="blend" value="difference"><span>差分</span></label>
-              </div>
-            </div>
           </div>
           <div class="group">
             <div class="field">
@@ -144,7 +150,7 @@
                 <button type="button" class="text-button reset">0に戻す</button>
               </div>
             </div>
-            <p class="hint"><kbd>Alt+Shift+矢印</kbd> で1px移動。倍率と位置は images.json に自動で保存</p>
+            <p class="hint">ロック解除中は矢印キーで1px、<kbd>Shift</kbd> を押すと10px移動。数値の欄は <kbd>↑</kbd><kbd>↓</kbd> で増減。倍率と位置は images.json に自動で保存</p>
           </div>
           <p class="info"></p>
           <p class="error" role="status"></p>
@@ -157,15 +163,13 @@
     const panel = $('.panel');
     const header = $('.panel-header');
     const form = {
-      visible: $('[name=visible]'),
       opacity: $('[name=opacity]'),
-      blend: [...root.querySelectorAll('[name=blend]')],
       image: $('[name=image]'),
       zoom: $('[name=zoom]'),
       x: $('[name=x]'),
       y: $('[name=y]'),
     };
-    $('.route').textContent = data.route;
+    $('.route').textContent = `ページ ${data.route}`;
     $('.route').title = data.route;
 
     // 応答由来の文字列は innerHTML に入れず、テキストとして扱う
@@ -194,7 +198,8 @@
       layer.style.width = `${viewport}px`;
       layer.hidden = !state.visible;
       layer.style.opacity = String(state.opacity);
-      layer.style.mixBlendMode = state.blend;
+      // 色を反転して重ねる。不透明度 50% なら一致する部分が灰色になり、ずれた部分が浮き出る
+      img.style.filter = state.blend === 'invert' ? 'invert(1)' : '';
       img.style.width = `${width}px`;
       img.style.transform = `translate(${adjustment.x}px, ${adjustment.y}px)`;
       $('.info').textContent = `画像 ${naturalWidth}px → 表示 ${round(width)}px（画面 ${viewport}px）`;
@@ -202,10 +207,12 @@
 
     // typing には入力中の欄の名前を渡す。その欄だけは書き換えない（「1.」の途中などで値が消えないように）
     function syncForm(typing) {
-      form.visible.checked = state.visible;
+      $('.visible-toggle').setAttribute('aria-pressed', String(state.visible));
+      $('.invert-toggle').setAttribute('aria-pressed', String(state.blend === 'invert'));
+      $('.lock').setAttribute('aria-pressed', String(state.locked));
+      $('.lock').title = state.locked ? '位置をロック中（クリックで解除すると矢印キーで移動できる）' : 'ロック解除中：矢印キーで移動（Shift で10px）。クリックでロック';
       form.opacity.value = String(state.opacity);
       $('output').textContent = `${Math.round(state.opacity * 100)}%`;
-      for (const radio of form.blend) radio.checked = radio.value === state.blend;
       form.image.value = state.image;
       const adjustment = currentAdjustment();
       if (typing !== 'zoom') form.zoom.value = adjustment.zoom.toFixed(2);
@@ -264,14 +271,13 @@
     }
 
     root.addEventListener('input', (e) => {
-      const { name, type, checked, value } = e.target;
+      const { name, type, value } = e.target;
       if (!(name in form)) return;
       if (name === 'x' || name === 'y') adjust({ [name]: Number(value) || 0 }, name);
       else if (name === 'zoom') {
         // 空欄や入力途中は反映を待つ
         if (value !== '' && Number(value) > 0) adjust({ zoom: toZoom(value) }, name);
-      } else if (type === 'checkbox') update({ [name]: checked });
-      else if (type === 'range') update({ [name]: Number(value) || 0 });
+      } else if (type === 'range') update({ [name]: Number(value) || 0 });
       else update({ [name]: value });
     });
     // 入力を終えたら、丸めた値や確定前の値を欄に戻す
@@ -282,6 +288,9 @@
     $('.zoom-reset').addEventListener('click', () => adjust({ zoom: 1 }));
     $('.reset').addEventListener('click', () => adjust({ x: 0, y: 0 }));
     $('.collapse').addEventListener('click', () => update({ collapsed: !state.collapsed }));
+    $('.visible-toggle').addEventListener('click', () => update({ visible: !state.visible }));
+    $('.invert-toggle').addEventListener('click', () => update({ blend: state.blend === 'invert' ? 'normal' : 'invert' }));
+    $('.lock').addEventListener('click', () => update({ locked: !state.locked }));
     img.addEventListener('load', render);
     img.addEventListener('error', () => {
       $('.error').textContent = '画像を読み込めませんでした';
@@ -310,19 +319,6 @@
       placePanel();
     }
 
-    // ドラッグできない場合の代わりに、ボタンで 右下 → 左下 → 左上 → 右上 の順に移動する
-    $('.corner').addEventListener('click', () => {
-      const rect = panel.getBoundingClientRect();
-      const viewportWidth = document.documentElement.clientWidth;
-      const right = rect.left + rect.width / 2 > viewportWidth / 2;
-      const bottom = rect.top + rect.height / 2 > window.innerHeight / 2;
-      const [nextRight, nextBottom] = right && bottom ? [false, true] : !right && bottom ? [false, false] : !right ? [true, false] : [true, true];
-      savePanel({
-        left: nextRight ? viewportWidth - rect.width - PANEL_MARGIN : PANEL_MARGIN,
-        top: nextBottom ? window.innerHeight - rect.height - PANEL_MARGIN : PANEL_MARGIN,
-      });
-    });
-
     let drag = null;
     header.addEventListener('pointerdown', (e) => {
       if (e.button !== 0 || e.target.closest('button')) return;
@@ -346,17 +342,36 @@
     header.addEventListener('pointercancel', endDrag);
 
     function onKeydown(e) {
-      if (!e.altKey || !e.shiftKey || e.ctrlKey || e.metaKey) return;
-      const moves = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1] };
-      if (e.code === 'KeyD') {
+      if (e.altKey && e.shiftKey && !e.ctrlKey && !e.metaKey && e.code === 'KeyD') {
         e.preventDefault();
         update({ visible: !state.visible });
-      } else if (moves[e.code]) {
-        e.preventDefault();
-        const [dx, dy] = moves[e.code];
-        const { x, y } = currentAdjustment();
-        adjust({ x: x + dx, y: y + dy });
+        return;
       }
+      // ロック解除中は、矢印キーで押した方向へ 1px（Shift で 10px）動かす
+      const direction = ARROWS[e.key];
+      if (!direction || state.locked || e.altKey || e.ctrlKey || e.metaKey) return;
+      // 入力欄や選択欄では、矢印キーを本来の操作（カーソル移動・値の増減）に使う
+      if (isEditable(e.composedPath()[0])) return;
+      e.preventDefault();
+      const step = e.shiftKey ? MOVE_STEP_LARGE : MOVE_STEP;
+      const { x, y } = currentAdjustment();
+      adjust({ x: x + direction[0] * step, y: y + direction[1] * step });
+    }
+
+    // 数値の欄は編集中に ↑↓ で増減し、Shift を押すと 10 倍ずつ動かす（標準の数値欄は Shift でも同じ量）
+    const fieldSteps = [
+      [form.x, MOVE_STEP, MOVE_STEP_LARGE],
+      [form.y, MOVE_STEP, MOVE_STEP_LARGE],
+      [form.zoom, ZOOM_STEP_FINE, ZOOM_STEP],
+    ];
+    for (const [field, step, largeStep] of fieldSteps) {
+      field.addEventListener('keydown', (e) => {
+        if ((e.key !== 'ArrowUp' && e.key !== 'ArrowDown') || e.altKey || e.ctrlKey || e.metaKey) return;
+        e.preventDefault();
+        const delta = (e.shiftKey ? largeStep : step) * (e.key === 'ArrowUp' ? 1 : -1);
+        const value = currentAdjustment()[field.name] + delta;
+        adjust({ [field.name]: field === form.zoom ? toZoom(value) : value });
+      });
     }
 
     function onResize() {
@@ -381,6 +396,10 @@
         host.remove();
       },
     };
+  }
+
+  function isEditable(el) {
+    return el instanceof Element && (el.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName));
   }
 
   function round(value) {
@@ -443,7 +462,9 @@
       background-size: 3px 4px;
     }
     .title { font-weight: 600; white-space: nowrap; }
-    .route { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--muted); }
+    .title { flex: 1; min-width: 0; }
+    .header-actions { display: flex; gap: 2px; padding-right: 4px; margin-right: 2px; border-right: 1px solid rgb(255 255 255 / 0.12); }
+    .route { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--muted); font-size: 11px; }
 
     .panel-body { display: grid; gap: 10px; padding: 10px; }
     .is-collapsed .panel-body { display: none; }
@@ -452,7 +473,6 @@
 
     .field { display: grid; grid-template-columns: 56px minmax(0, 1fr); align-items: center; gap: 8px; }
     .field-label { color: var(--muted); }
-    .switch-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-height: 24px; cursor: pointer; }
 
     p { margin: 0; }
     .hint { color: var(--muted); font-size: 11px; }
@@ -483,24 +503,6 @@
     .range input { flex: 1; min-width: 0; margin: 0; accent-color: var(--accent-strong); }
     output { width: 34px; text-align: right; font-variant-numeric: tabular-nums; }
 
-    input[role=switch] {
-      appearance: none; flex: none; position: relative; width: 32px; height: 18px; margin: 0; cursor: pointer;
-      background: var(--border); border-radius: 9px; transition: background-color 0.15s;
-    }
-    input[role=switch]::before {
-      content: ""; position: absolute; top: 2px; left: 2px; width: 14px; height: 14px;
-      background: #fff; border-radius: 50%; transition: transform 0.15s;
-    }
-    input[role=switch]:checked { background: var(--accent-strong); }
-    input[role=switch]:checked::before { transform: translateX(14px); }
-
-    .segmented { display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; padding: 2px; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); }
-    .segmented label { position: relative; cursor: pointer; }
-    .segmented input { position: absolute; inset: 0; margin: 0; opacity: 0; cursor: pointer; }
-    .segmented span { display: block; padding: 2px 0; text-align: center; border-radius: 4px; color: var(--muted); }
-    .segmented input:checked + span { background: var(--accent-strong); color: #fff; }
-    .segmented input:focus-visible + span { outline: 2px solid var(--accent); outline-offset: 1px; }
-
     .stepper { display: grid; grid-template-columns: 28px minmax(0, 1fr) 28px auto; gap: 4px; }
     .stepper input { text-align: center; padding: 0 4px; }
     .offset { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto; gap: 6px; }
@@ -515,10 +517,15 @@
     .icon-button { display: grid; place-items: center; flex: none; width: 26px; height: 26px; padding: 0; background: transparent; border-color: transparent; }
     .icon-button svg { width: 14px; height: 14px; fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; }
     .collapse svg { transition: transform 0.15s; }
+    /* オン・オフで形を変えるアイコン（目の斜線、錠の掛け金） */
+    .icon-button .fill { fill: currentColor; stroke: none; }
+    .icon-button[aria-pressed=true] .when-off, .icon-button[aria-pressed=false] .when-on { display: none; }
+    .toggle[aria-pressed=true] { background: var(--accent-strong); color: #fff; }
+    .toggle[aria-pressed=true]:hover { background: #1d4ed8; }
     .collapse[aria-expanded=false] svg { transform: rotate(180deg); }
 
     @media (prefers-reduced-motion: reduce) {
-      input[role=switch], input[role=switch]::before, .collapse svg { transition: none; }
+      .collapse svg { transition: none; }
     }
   `;
 
