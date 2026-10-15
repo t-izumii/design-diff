@@ -1,0 +1,20 @@
+{
+  "manifest_version": 3,
+  "name": "Design Diff Loader",
+  "version": "0.1.0",
+  "description": "design-diff serve が配信するデザイン画像を、ローカル開発中のページに重ねる",
+  "content_scripts": [
+    {
+      "matches": [
+        "http://localhost/*",
+        "http://127.0.0.1/*",
+        "*://*.localhost/*",
+        "*://*.local/*",
+        "*://*.test/*"
+      ],
+      "exclude_matches": ["*://*/wp-admin/*", "*://*/wp-login.php*"],
+      "js": ["overlay.js", "content.js"],
+      "run_at": "document_idle"
+    }
+  ]
+}
