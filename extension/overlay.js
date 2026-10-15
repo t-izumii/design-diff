@@ -101,7 +101,10 @@
       <div class="layer"><img alt="" draggable="false" crossorigin="anonymous"></div>
       <section class="panel" aria-label="Design Diff">
         <header class="panel-header" title="ドラッグでパネルを移動">
-          <span class="grip" aria-hidden="true"></span>
+          <svg class="mark" viewBox="0 0 18 18" aria-hidden="true">
+            <g class="mark-plate mark-cyan"><circle cx="9" cy="9" r="4.25"/><path d="M9 1.5v15M1.5 9h15"/></g>
+            <g class="mark-plate mark-magenta"><circle cx="9" cy="9" r="4.25"/><path d="M9 1.5v15M1.5 9h15"/></g>
+          </svg>
           <strong class="title">Design Diff</strong>
           <span class="header-actions">
             <button type="button" class="icon-button toggle visible-toggle" aria-label="重ねて表示" title="重ねて表示（Alt+Shift+D）">
@@ -120,7 +123,10 @@
         </header>
         <div class="panel-body" id="panel-body">
           <div class="group">
-            <p class="route"></p>
+            <div class="field">
+              <span class="field-label">ページ</span>
+              <span class="route"></span>
+            </div>
             <label class="field">
               <span class="field-label">画像</span>
               <select name="image"></select>
@@ -133,25 +139,28 @@
               </span>
             </label>
           </div>
-          <div class="group">
+          <div class="group" role="group" aria-labelledby="adjust-title">
+            <p class="group-head"><span class="group-title" id="adjust-title">倍率と位置</span><span>images.json に保存</span></p>
             <div class="field">
               <label class="field-label" for="zoom">倍率</label>
-              <div class="stepper">
-                <button type="button" class="step-button" data-zoom="-1" aria-label="倍率を0.1下げる">−</button>
-                <input type="number" id="zoom" name="zoom" min="${ZOOM_MIN}" max="${ZOOM_MAX}" step="0.01" inputmode="decimal">
-                <button type="button" class="step-button" data-zoom="1" aria-label="倍率を0.1上げる">＋</button>
-                <button type="button" class="text-button zoom-reset">1x</button>
+              <div class="zoom-controls">
+                <div class="stepper">
+                  <button type="button" class="stepper-button" data-zoom="-1" aria-label="倍率を0.1下げる"><svg viewBox="0 0 12 12" aria-hidden="true"><path d="M2.5 6h7"/></svg></button>
+                  <input type="number" id="zoom" name="zoom" min="${ZOOM_MIN}" max="${ZOOM_MAX}" step="0.01" inputmode="decimal">
+                  <button type="button" class="stepper-button" data-zoom="1" aria-label="倍率を0.1上げる"><svg viewBox="0 0 12 12" aria-hidden="true"><path d="M2.5 6h7M6 2.5v7"/></svg></button>
+                </div>
+                <button type="button" class="text-button zoom-reset">1xに戻す</button>
               </div>
             </div>
             <div class="field" role="group" aria-labelledby="offset-label">
               <span class="field-label" id="offset-label">位置</span>
-              <div class="offset">
-                <label><span>X</span><input type="number" name="x" step="1"></label>
-                <label><span>Y</span><input type="number" name="y" step="1"></label>
-                <button type="button" class="text-button reset">0に戻す</button>
+              <div class="offset-controls">
+                <label class="axis"><span>X</span><input type="number" name="x" step="1"></label>
+                <label class="axis"><span>Y</span><input type="number" name="y" step="1"></label>
+                <button type="button" class="text-button offset-reset">0に戻す</button>
               </div>
             </div>
-            <p class="hint">ロック解除中は矢印キーで1px、<kbd>Shift</kbd> を押すと10px移動。数値の欄は <kbd>↑</kbd><kbd>↓</kbd> で増減。倍率と位置は images.json に自動で保存</p>
+            <p class="hint">ロック解除中は矢印キーで移動、<kbd>Shift</kbd>で10px</p>
           </div>
           <p class="info"></p>
           <p class="error" role="status"></p>
@@ -170,7 +179,7 @@
       x: $('[name=x]'),
       y: $('[name=y]'),
     };
-    $('.route').textContent = `ページ ${data.route}`;
+    $('.route').textContent = data.route;
     $('.route').title = data.route;
 
     // 応答由来の文字列は innerHTML に入れず、テキストとして扱う
@@ -213,6 +222,7 @@
       $('.lock').setAttribute('aria-pressed', String(state.locked));
       $('.lock').title = state.locked ? '位置をロック中（クリックで解除すると矢印キーで移動できる）' : 'ロック解除中：矢印キーで移動（Shift で10px）。クリックでロック';
       form.opacity.value = String(state.opacity);
+      form.opacity.style.setProperty('--fill', `${state.opacity * 100}%`);
       $('output').textContent = `${Math.round(state.opacity * 100)}%`;
       form.image.value = state.image;
       const adjustment = currentAdjustment();
@@ -287,7 +297,7 @@
       button.addEventListener('click', () => adjust({ zoom: toZoom(currentAdjustment().zoom + Number(button.dataset.zoom) * ZOOM_STEP) }));
     }
     $('.zoom-reset').addEventListener('click', () => adjust({ zoom: 1 }));
-    $('.reset').addEventListener('click', () => adjust({ x: 0, y: 0 }));
+    $('.offset-reset').addEventListener('click', () => adjust({ x: 0, y: 0 }));
     $('.collapse').addEventListener('click', () => update({ collapsed: !state.collapsed }));
     $('.visible-toggle').addEventListener('click', () => update({ visible: !state.visible }));
     $('.invert-toggle').addEventListener('click', () => update({ blend: state.blend === 'invert' ? 'normal' : 'invert' }));
@@ -430,100 +440,136 @@
     .layer[hidden] { display: none; }
     .layer img { display: block; max-width: none; height: auto; user-select: none; }
 
+    /* 印刷の見当合わせ（版のずれの確認）に寄せた配色。強調はシアンだけにし、マゼンタは見出しのマークにだけ使う */
     .panel {
-      --bg: rgb(24 24 27 / 0.96);
-      --surface: #27272a;
-      --border: #52525b;
-      --text: #f4f4f5;
-      --muted: #a1a1aa;
-      --accent: #60a5fa;
-      --accent-strong: #2563eb;
-      --danger: #fca5a5;
+      --surface: rgb(30 32 38 / 0.94);
+      --field: rgb(255 255 255 / 0.06);
+      --field-hover: rgb(255 255 255 / 0.1);
+      --line: rgb(255 255 255 / 0.08);
+      --text: #eceef2;
+      --muted: #9ba2ad;
+      --cyan: #2bb8ec;
+      --cyan-tint: rgb(43 184 236 / 0.16);
+      --cyan-tint-hover: rgb(43 184 236 / 0.24);
+      --magenta: #ec2c8c;
+      --danger: #ff8f8f;
       --radius: 6px;
       position: fixed; right: ${PANEL_MARGIN}px; bottom: ${PANEL_MARGIN}px; z-index: 2147483647;
-      width: 272px; max-width: calc(100vw - ${PANEL_MARGIN * 2}px);
+      /* 幅は文字の大きさの倍数で持ち、下の font の大きさを変えると幅も合わせて変わる（12px で 288px） */
+      box-sizing: border-box; width: 24em; max-width: calc(100vw - ${PANEL_MARGIN * 2}px);
       color-scheme: dark;
-      font: 12px/1.5 system-ui, -apple-system, "Hiragino Sans", sans-serif; color: var(--text);
-      background: var(--bg); border: 1px solid rgb(255 255 255 / 0.08); border-radius: 10px;
-      box-shadow: 0 8px 24px rgb(0 0 0 / 0.35);
+      font: 12px/1.5 system-ui, -apple-system, "Hiragino Sans", "Hiragino Kaku Gothic ProN", "Yu Gothic UI", Meiryo, sans-serif;
+      font-feature-settings: "palt";
+      color: var(--text);
+      background: var(--surface);
+      -webkit-backdrop-filter: blur(16px) saturate(1.4);
+      backdrop-filter: blur(16px) saturate(1.4);
+      border: 1px solid var(--line); border-radius: 12px;
+      /* 明るいページでも暗いページでも縁が見えるよう、内側の明るい線に外側の暗い線を重ねる */
+      box-shadow: 0 0 0 1px rgb(0 0 0 / 0.3), 0 18px 40px -16px rgb(0 0 0 / 0.6);
     }
     .panel.is-placed { right: auto; bottom: auto; }
     .panel.is-dragging { opacity: 0.85; }
 
     .panel-header {
-      display: flex; align-items: center; gap: 6px; padding: 6px 6px 6px 8px;
+      display: flex; align-items: center; gap: 8px; padding: 6px 6px 6px 12px;
       cursor: grab; user-select: none; touch-action: none;
-      border-bottom: 1px solid rgb(255 255 255 / 0.08);
+      border-bottom: 1px solid var(--line);
     }
     .is-dragging .panel-header { cursor: grabbing; }
     .is-collapsed .panel-header { border-bottom: 0; }
-    .grip {
-      width: 6px; height: 14px; flex: none; opacity: 0.5;
-      background-image: radial-gradient(currentColor 1px, transparent 1.5px);
-      background-size: 3px 4px;
-    }
-    .title { font-weight: 600; white-space: nowrap; }
-    .title { flex: 1; min-width: 0; }
-    .header-actions { display: flex; gap: 2px; padding-right: 4px; margin-right: 2px; border-right: 1px solid rgb(255 255 255 / 0.12); }
-    .route { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--muted); font-size: 11px; }
+    /* 見当マーク。2 色の版を少しずらして重ね、デザインと実装のずれを表す */
+    .mark { width: 18px; height: 18px; flex: none; overflow: visible; }
+    .mark-plate { fill: none; stroke-width: 1.25; mix-blend-mode: screen; }
+    .mark-cyan { stroke: var(--cyan); }
+    .mark-magenta { stroke: var(--magenta); transform: translate(1.25px, 1px); }
+    .title { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; }
+    .header-actions { display: flex; gap: 2px; padding-right: 6px; border-right: 1px solid var(--line); }
 
-    .panel-body { display: grid; gap: 10px; padding: 10px; }
+    .panel-body { display: grid; gap: 12px; padding: 12px; }
     .is-collapsed .panel-body { display: none; }
     .group { display: grid; gap: 8px; }
-    .group + .group { padding-top: 10px; border-top: 1px solid rgb(255 255 255 / 0.08); }
-
-    .field { display: grid; grid-template-columns: 56px minmax(0, 1fr); align-items: center; gap: 8px; }
-    .field-label { color: var(--muted); }
-
+    .group + .group { padding-top: 12px; border-top: 1px solid var(--line); }
     p { margin: 0; }
-    .hint { color: var(--muted); font-size: 11px; }
-    .info { color: var(--muted); font-size: 11px; font-variant-numeric: tabular-nums; }
-    .error { color: var(--danger); }
-    .error:empty { display: none; }
-    kbd {
-      font: 10px/1 ui-monospace, SFMono-Regular, Menlo, monospace; color: var(--muted);
-      padding: 2px 4px; border: 1px solid var(--border); border-radius: 4px;
-    }
+    .group-head { display: flex; justify-content: space-between; gap: 8px; font-size: 11px; color: var(--muted); }
+    .group-title { color: var(--text); font-weight: 600; }
 
-    button, select, input { font: inherit; color: var(--text); margin: 0; }
-    select, input[type=number] {
-      box-sizing: border-box; width: 100%; min-width: 0; height: 28px; padding: 0 8px;
-      background-color: var(--surface); border: 1px solid var(--border); border-radius: var(--radius);
-    }
+    .field { display: grid; grid-template-columns: 5em minmax(0, 1fr); align-items: center; gap: 8px; }
+    .field-label { color: var(--muted); }
+    .route { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+    button, select, input { font: inherit; color: inherit; margin: 0; }
+    button { cursor: pointer; }
+    :focus-visible { outline: 2px solid var(--cyan); outline-offset: 1px; }
+
     select {
-      appearance: none; padding-right: 26px; text-overflow: ellipsis; cursor: pointer;
-      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M4 6l4 4 4-4' fill='none' stroke='%23a1a1aa' stroke-width='1.5'/%3E%3C/svg%3E");
-      background-repeat: no-repeat; background-position: right 8px center; background-size: 12px;
+      appearance: none; box-sizing: border-box; width: 100%; min-width: 0; height: 28px; padding: 0 26px 0 8px;
+      background: var(--field) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M4 6l4 4 4-4' fill='none' stroke='%239ba2ad' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") no-repeat right 8px center / 12px;
+      border: 0; border-radius: var(--radius); text-overflow: ellipsis; cursor: pointer;
+    }
+    select:hover { background-color: var(--field-hover); }
+
+    /* 不透明度。つまみより左（--fill まで）をシアンで塗る */
+    .range { display: flex; align-items: center; gap: 10px; }
+    input[type=range] { flex: 1; min-width: 0; height: 20px; margin: 0; background: transparent; appearance: none; cursor: pointer; }
+    input[type=range]::-webkit-slider-runnable-track { height: 4px; border-radius: 2px; background: linear-gradient(to right, var(--cyan) var(--fill, 0%), rgb(255 255 255 / 0.14) var(--fill, 0%)); }
+    input[type=range]::-webkit-slider-thumb { appearance: none; width: 14px; height: 14px; margin-top: -5px; border-radius: 50%; background: #fff; box-shadow: 0 1px 3px rgb(0 0 0 / 0.5); }
+    input[type=range]::-moz-range-track { height: 4px; border-radius: 2px; background: rgb(255 255 255 / 0.14); }
+    input[type=range]::-moz-range-progress { height: 4px; border-radius: 2px; background: var(--cyan); }
+    input[type=range]::-moz-range-thumb { width: 14px; height: 14px; border: 0; border-radius: 50%; background: #fff; box-shadow: 0 1px 3px rgb(0 0 0 / 0.5); }
+    output { min-width: 3em; text-align: right; font-variant-numeric: tabular-nums; }
+
+    /* 数値欄は倍率の増減と位置の枠の中に置き、背景は枠の側で付ける */
+    input[type=number] {
+      box-sizing: border-box; width: 100%; min-width: 0; height: 100%; padding: 0 6px;
+      background: transparent; border: 0; font-variant-numeric: tabular-nums; appearance: textfield;
     }
     /* 狭い欄で値が隠れないよう、スピンボタンは出さない（矢印キーでの増減は使える） */
-    input[type=number] { font-variant-numeric: tabular-nums; appearance: textfield; }
     input[type=number]::-webkit-inner-spin-button, input[type=number]::-webkit-outer-spin-button { appearance: none; margin: 0; }
-    :focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 
-    .range { display: flex; align-items: center; gap: 8px; }
-    .range input { flex: 1; min-width: 0; margin: 0; accent-color: var(--accent-strong); }
-    output { width: 34px; text-align: right; font-variant-numeric: tabular-nums; }
+    .zoom-controls { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 6px; }
+    .stepper { display: grid; grid-template-columns: 28px minmax(0, 1fr) 28px; height: 28px; background: var(--field); border-radius: var(--radius); }
+    .stepper input { text-align: center; }
+    .stepper input:focus-visible { outline-offset: -2px; }
+    .stepper-button { display: grid; place-items: center; padding: 0; color: var(--muted); background: transparent; border: 0; border-radius: var(--radius); }
+    .stepper-button:hover { color: var(--text); background: var(--field-hover); }
+    .stepper-button svg { width: 12px; height: 12px; fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linecap: round; }
 
-    .stepper { display: grid; grid-template-columns: 28px minmax(0, 1fr) 28px auto; gap: 4px; }
-    .stepper input { text-align: center; padding: 0 4px; }
-    .offset { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto; gap: 6px; }
-    .offset label { display: flex; align-items: center; gap: 4px; min-width: 0; color: var(--muted); }
+    /* 位置の欄。軸の名前を欄の中に置き、狭い幅でも値を入れる場所を広く取る */
+    .offset-controls { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto; align-items: center; gap: 6px; }
+    .axis { display: flex; align-items: center; min-width: 0; height: 28px; padding-left: 8px; color: var(--muted); background: var(--field); border-radius: var(--radius); cursor: text; }
+    .axis:hover { background: var(--field-hover); }
+    .axis:focus-within { outline: 2px solid var(--cyan); outline-offset: 1px; }
+    /* 軸の名前との間は詰め、狭い幅でも桁を多く見せる */
+    .axis input { padding-left: 4px; color: var(--text); }
+    .axis input:focus-visible { outline: none; }
 
-    .step-button, .text-button, .icon-button {
-      height: 28px; padding: 0 8px; cursor: pointer; white-space: nowrap;
-      background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius);
-    }
-    .step-button { padding: 0; }
-    .step-button:hover, .text-button:hover, .icon-button:hover { background: #3f3f46; }
-    .icon-button { display: grid; place-items: center; flex: none; width: 26px; height: 26px; padding: 0; background: transparent; border-color: transparent; }
-    .icon-button svg { width: 14px; height: 14px; fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; }
-    .collapse svg { transition: transform 0.15s; }
+    .text-button { height: 28px; padding: 0 8px; font-size: 11px; white-space: nowrap; color: var(--muted); background: transparent; border: 0; border-radius: var(--radius); }
+    .text-button:hover { color: var(--text); background: var(--field-hover); }
+
+    .icon-button { display: grid; place-items: center; flex: none; width: 28px; height: 28px; padding: 0; color: var(--muted); background: transparent; border: 0; border-radius: var(--radius); }
+    .icon-button:hover { color: var(--text); background: var(--field-hover); }
+    .icon-button svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; }
     /* オン・オフで形を変えるアイコン（目の斜線、錠の掛け金） */
     .icon-button .fill { fill: currentColor; stroke: none; }
     .icon-button[aria-pressed=true] .when-off, .icon-button[aria-pressed=false] .when-on { display: none; }
-    .toggle[aria-pressed=true] { background: var(--accent-strong); color: #fff; }
-    .toggle[aria-pressed=true]:hover { background: #1d4ed8; }
+    /* 色が付いているボタンがオン（表示中・反転中・ロック中） */
+    .toggle[aria-pressed=true] { color: var(--cyan); background: var(--cyan-tint); }
+    .toggle[aria-pressed=true]:hover { color: var(--cyan); background: var(--cyan-tint-hover); }
+    .collapse svg { transition: transform 0.15s; }
     .collapse[aria-expanded=false] svg { transform: rotate(180deg); }
+
+    .hint, .info { font-size: 11px; color: var(--muted); }
+    .info { font-variant-numeric: tabular-nums; }
+    .error { color: var(--danger); }
+    .error:empty { display: none; }
+    kbd { font: inherit; margin: 0 2px; padding: 0 4px; color: var(--text); background: var(--field); border-radius: 4px; }
+
+    /* ハイコントラストモードでは背景色が消えるため、欄やボタンの境界とオンの状態を線で示す */
+    @media (forced-colors: active) {
+      select, .stepper, .axis, .text-button, .icon-button { border: 1px solid ButtonText; }
+      .toggle[aria-pressed=true] { border: 2px solid Highlight; }
+    }
 
     @media (prefers-reduced-motion: reduce) {
       .collapse svg { transition: none; }
