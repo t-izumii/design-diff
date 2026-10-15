@@ -53,8 +53,11 @@ if (command === 'extension') {
 } else if (command === 'init') {
   fs.mkdirSync(path.join(rootDir, 'index'), { recursive: true });
   const configFile = path.join(rootDir, 'design-diff.config.json');
-  if (!fs.existsSync(configFile)) {
-    fs.writeFileSync(configFile, JSON.stringify(DEFAULT_CONFIG, null, 2) + '\n');
+  // 既にあれば書き換えない。wx はシンボリックリンクも既存として扱い、リンク先に書き込まない
+  try {
+    fs.writeFileSync(configFile, JSON.stringify(DEFAULT_CONFIG, null, 2) + '\n', { flag: 'wx' });
+  } catch (err) {
+    if (err.code !== 'EEXIST') throw err;
   }
   orExit(() => syncSettings(rootDir));
   console.log(`作成しました: ${path.relative(process.cwd(), rootDir)}/`);
@@ -83,7 +86,7 @@ if (command === 'extension') {
     console.error(`画像フォルダがありません: ${rootDir}\n先に design-diff init を実行してください。`);
     process.exit(1);
   }
-  const port = Number(values.port ?? loadConfig(rootDir).port);
+  const port = Number(values.port ?? orExit(() => loadConfig(rootDir)).port);
   try {
     await startServer({ rootDir, port });
   } catch (err) {

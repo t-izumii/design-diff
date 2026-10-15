@@ -95,9 +95,10 @@
     host.setAttribute('data-design-diff', '');
     host.style.cssText = 'position:absolute;top:0;left:0;width:0;height:0;margin:0;padding:0;border:0;';
     const root = host.attachShadow({ mode: 'open' });
+    // 画像は CORS で読み込む。CLI は Origin の付かない要求には画像を返さない
     root.innerHTML = `
       <style>${STYLE}</style>
-      <div class="layer"><img alt="" draggable="false"></div>
+      <div class="layer"><img alt="" draggable="false" crossorigin="anonymous"></div>
       <section class="panel" aria-label="Design Diff">
         <header class="panel-header" title="ドラッグでパネルを移動">
           <span class="grip" aria-hidden="true"></span>

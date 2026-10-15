@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { scan, syncSettings, updateSettings, loadSettings, routeLabel } from '../lib/scan.js';
+import { scan, syncSettings, updateSettings, loadSettings, loadConfig, routeLabel } from '../lib/scan.js';
 
 // 1x1 の PNG。中身は走査では見ないが、画像として正しいものにしておく
 const PNG = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=', 'base64');
@@ -83,4 +83,40 @@ test('パネルからの保存は design-diff/ にある画像だけを書き換
   assert.equal(updateSettings(dir, '../outside.png', { x: 1 }), null);
   assert.equal(updateSettings(dir, 'index/none.png', { x: 1 }), null);
   assert.deepEqual(Object.keys(loadSettings(dir)), ['index/a.png']);
+});
+
+// Windows ではシンボリックリンクの作成に権限が要るため省く
+const noSymlink = process.platform === 'win32';
+
+test('design-diff/ の外を指すシンボリックリンクの画像は使わない', { skip: noSymlink }, () => {
+  const dir = makeDir({ 'index/a.png': null });
+  const outside = makeDir({ 'secret.png': 'secret' });
+  fs.symlinkSync(path.join(outside, 'secret.png'), path.join(dir, 'index/leak.png'));
+  fs.symlinkSync('a.png', path.join(dir, 'index/link.png'));
+  const { entries, warnings } = scan(dir, {});
+  assert.deepEqual(routes(entries), ['/ a.png,link.png']);
+  assert.deepEqual(warnings, ['design-diff/ の外を指すシンボリックリンクは使えないため無視しました: index/leak.png']);
+});
+
+test('images.json がシンボリックリンクでも、リンク先には書き込まない', { skip: noSymlink }, () => {
+  const dir = makeDir({ 'index/a.png': null });
+  const target = path.join(makeDir({}), 'target.txt');
+  fs.symlinkSync(target, path.join(dir, 'images.json'));
+  syncSettings(dir);
+  assert.equal(fs.existsSync(target), false);
+  assert.equal(fs.lstatSync(path.join(dir, 'images.json')).isSymbolicLink(), false);
+  assert.deepEqual(loadSettings(dir), { 'index/a.png': { zoom: 1, x: 0, y: 0 } });
+  // 一時ファイルを残さない
+  assert.deepEqual(fs.readdirSync(dir).sort(), ['images.json', 'index']);
+});
+
+test('design-diff/ の外を指す images.json と設定ファイルは読み込まない', { skip: noSymlink }, () => {
+  const dir = makeDir({ 'index/a.png': null });
+  const secret = path.join(makeDir({ 'secret.json': '{"token":"secret"}' }), 'secret.json');
+  fs.symlinkSync(secret, path.join(dir, 'images.json'));
+  fs.symlinkSync(secret, path.join(dir, 'design-diff.config.json'));
+  assert.throws(() => loadSettings(dir), /シンボリックリンク/);
+  assert.throws(() => loadConfig(dir), /シンボリックリンク/);
+  assert.throws(() => updateSettings(dir, 'index/a.png', { x: 1 }), /シンボリックリンク/);
+  assert.equal(fs.readFileSync(secret, 'utf8'), '{"token":"secret"}');
 });
