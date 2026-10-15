@@ -13,10 +13,20 @@
   ],
   "scripts": {
     "serve": "node bin/design-diff.js serve",
+    "test": "node --test test/*.test.js",
     "check": "node --check bin/design-diff.js && node --check lib/server.js && node --check lib/scan.js && node --check lib/match.js && node --check extension/overlay.js && node --check extension/content.js"
   },
   "engines": {
     "node": ">=20"
   },
-  "license": "MIT"
+  "license": "MIT",
+  "author": "t-izumii",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/t-izumii/design-diff.git"
+  },
+  "homepage": "https://github.com/t-izumii/design-diff#readme",
+  "bugs": {
+    "url": "https://github.com/t-izumii/design-diff/issues"
+  }
 }

@@ -15,39 +15,67 @@ CLI（design-diff serve）
 
 ## 最初の準備（1 回だけ）
 
-### CLI をインストールする
+このリポジトリを自分の GitHub アカウントにフォークして使います。npm には公開していません。
 
-npm には公開していないので、GitHub のリポジトリから直接インストールします。
+フォークしておくと、対応するドメインや CLI のポートなど、拡張のファイルを書き換える設定を自分のフォークにコミットしておけます（[対応するドメイン](#対応するドメイン)、[設定ファイル](#設定ファイル)を参照）。
+
+### 1. フォークする
+
+GitHub でこのリポジトリ（[t-izumii/design-diff](https://github.com/t-izumii/design-diff)）を開き、右上の「Fork」を押して自分のアカウントにコピーします。以下の `<ユーザー名>` は、自分の GitHub のユーザー名に置き換えてください。
+
+### 2. CLI をインストールする
+
+使い方に合わせて、どちらかの方法を選びます。
+
+**そのまま使う場合**は、フォークから直接インストールします。
 
 ```sh
-npm install -g github:t-izumii/design-diff
+npm install -g github:<ユーザー名>/design-diff
 design-diff --help        # 使い方が表示されれば完了
 ```
 
-nodenv を使っている場合は、インストールのあとに `nodenv rehash` を実行しないと `command not found` になります。また、インストールは実行したときの Node の版に入るので、案件で別の版に切り替わる場合はその版でもインストールしてください。
+フォークを非公開にしている場合は、GitHub に SSH で接続できる状態にしてから、`npm install -g git+ssh://git@github.com/<ユーザー名>/design-diff.git` でインストールします。
 
-リポジトリが非公開の場合は、GitHub に SSH で接続できる状態にしてから、`npm install -g git+ssh://git@github.com/t-izumii/design-diff.git` でインストールします。
+**設定を書き換えて使う場合**は、フォークを clone してリンクします。clone したフォルダのファイルを書き換えると、すぐ反映されます。
+
+```sh
+git clone https://github.com/<ユーザー名>/design-diff.git
+cd design-diff
+npm link
+design-diff --help        # 使い方が表示されれば完了
+```
+
+どちらの場合も、nodenv を使っているときはインストールのあとに `nodenv rehash` を実行しないと `command not found` になります。また、インストールは実行したときの Node の版に入るので、案件で別の版に切り替わる場合はその版でもインストールしてください。
 
 `npx design-diff` は使わないでください。npm から同じ名前の別のパッケージを取得して実行してしまう可能性があります。
 
-### Chrome 拡張を入れる
+### 3. Chrome 拡張を入れる
 
-1. `design-diff extension` を実行し、表示された拡張のフォルダの場所を確認する
+1. `design-diff extension` を実行し、表示された拡張のフォルダの場所を確認する（clone した場合は、その中の `extension/` フォルダ）
 2. `chrome://extensions` を開き、右上の「デベロッパーモード」をオンにする
 3. 「パッケージ化されていない拡張機能を読み込む」で、1 のフォルダを選ぶ
 
 ### 更新・削除
 
-最新の版に更新するときは、インストールと同じコマンドをもう一度実行します。そのあと `chrome://extensions` で拡張の再読み込みボタンを押してください。押さないと古いパネルのまま動きます。
+元のリポジトリの更新を取り込むときは、GitHub の自分のフォークの画面で「Sync fork」を押します。clone している場合は、そのあと `git pull` も実行します。
+
+続けて、インストールの方法に合わせて次を行い、最後に `chrome://extensions` で拡張の再読み込みボタンを押してください。押さないと古いパネルのまま動きます。
 
 ```sh
-npm install -g github:t-izumii/design-diff   # 更新
-npm uninstall -g design-diff                 # 削除
+npm install -g github:<ユーザー名>/design-diff   # そのまま使う場合: もう一度インストールする
+# clone して npm link した場合は、git pull だけで反映される
+```
+
+削除するときは、インストールの方法に合わせて次を実行します。
+
+```sh
+npm uninstall -g design-diff    # そのまま使う場合
+npm unlink -g design-diff       # clone して npm link した場合
 ```
 
 ### このツール自体を開発する場合
 
-リポジトリを clone したフォルダで `npm link` を実行すると、`design-diff` コマンドがそのフォルダのコードを直接使うようになり、コードの変更がすぐ反映されます。拡張も clone した `extension/` フォルダを読み込んでください。解除は `npm unlink -g design-diff` です。
+clone して `npm link` した状態で開発します。URL と画像の対応付けや `images.json` の更新を変えたときは、`npm test` で自動テストを実行してください。改善を元のリポジトリに取り込んでほしい場合は、フォークから Pull Request を送ってください。
 
 ## 案件での使い方
 
@@ -59,38 +87,37 @@ npm uninstall -g design-diff                 # 削除
 design-diff init
 ```
 
-`design-diff/` フォルダと設定ファイルができます。サンプルとして作られる `localhost_3000/` は、開発サーバーのホストとポートに合わせて名前を変えてください。
+`design-diff/` フォルダと設定ファイル、トップページ用の `index/` フォルダができます。
 
 ### 2. 画像を置く
 
-フォルダの階層が、そのまま重ねたいページの URL になります。
+`design-diff/` の中のフォルダの階層が、そのまま重ねたいページのパスになります。ホスト名やポートは見ないので、開発サーバーのポートが変わっても、`localhost` と `127.0.0.1` のどちらで開いても同じ画像が重なります。
 
 ```
 design-diff/
   design-diff.config.json   ← CLI の設定
   images.json               ← 画像ごとの倍率と位置（自動で更新される）
-  localhost_3000/           ← ホスト名。ポートの ":" は "_" にする
-    index/                  ← トップページ（/）
-      TOP.png               ← ファイル名は Figma の書き出し名のままでよい
-      TOP_メニュー展開.png   ← 1 つのページに何枚でも置ける
-    about/
-      About.png             ← /about に一致
-    news/
-      _slug/                ← "_" で始まるフォルダは 1 階層分のワイルドカード
-        記事詳細.png         ← /news/任意の記事 に一致
-  mysite.local/             ← WordPress（Local など）のドメイン
-    index/TOP.png
-  _any/                     ← すべてのホストに一致
-    contact/Contact.png
+  index/                    ← トップページ（/）
+    TOP.png                 ← ファイル名は Figma の書き出し名のままでよい
+    TOP_メニュー展開.png     ← 1 つのページに何枚でも置ける
+  about/
+    About.png               ← /about に一致
+  news/
+    News.png                ← 一覧ページ（/news）
+    _slug/                  ← "_" で始まるフォルダは 1 階層分のワイルドカード
+      記事詳細.png           ← /news/任意の記事 に一致
+    special/
+      Special.png           ← /news/special はこちらが優先される
 ```
 
 | 置き方 | 決まり |
 | --- | --- |
-| ホストのフォルダ | `localhost:3000` は `localhost_3000`。どのホストでもよい画像は `_any` に置く。両方にある場合はホスト名のフォルダが優先される |
-| トップページ | `index` フォルダに置く。ホストのフォルダ直下の画像は無視される |
-| 下層ページ | `/about`・`/about/`・`/about.html` は同じページとして扱う |
-| ワイルドカード | `_` で始まるフォルダは、その階層の任意の名前に一致する。同じ階層に通常の名前のフォルダもあれば、そちらが優先される |
+| トップページ | `index` フォルダに置く。`design-diff/` の直下に置いた画像は無視される |
+| 下層ページ | `/about`・`/about/`・`/about.html`・`/about/index.html` は同じページとして扱う。フォルダ名の大文字・小文字は区別する |
+| ワイルドカード | `_` で始まるフォルダは、その階層の任意の名前に一致する（`news/_slug` → `/news/xxx`）。1 階層分だけなので、`/news/2024/10` には一致しない。同じ階層に通常の名前のフォルダもあれば、そちらが優先される |
 | 画像 | PNG・JPG・WebP。ファイル名は自由。同じフォルダの画像は、パネルでファイル名から選んで切り替える |
+
+`serve` は起動したフォルダの `design-diff/` だけを配信するので、案件ごとに `serve` を起動し直してください。CLI のポートは 1 つなので、同時に配信できるのは 1 案件です。
 
 ### 3. 画像を登録する
 
@@ -175,8 +202,8 @@ Figma から 2x で書き出した画像は、倍率を 0.5 にするとフレ�
 
 ```json
 {
-  "localhost_3000/index/TOP.png": { "zoom": 1, "x": 0, "y": 0 },
-  "localhost_3000/index/TOP_SP@2x.png": { "zoom": 0.5, "x": 0, "y": -12 }
+  "index/TOP.png": { "zoom": 1, "x": 0, "y": 0 },
+  "index/TOP_SP@2x.png": { "zoom": 0.5, "x": 0, "y": -12 }
 }
 ```
 
@@ -191,7 +218,7 @@ Figma から 2x で書き出した画像は、倍率を 0.5 にするとフレ�
 
 既定では `localhost`、`127.0.0.1`、`*.localhost`、`*.local`、`*.test` のページで動きます。WordPress の管理画面（`/wp-admin/`、`/wp-login.php`）では動きません。
 
-ほかのドメインで使う場合は、次の 2 か所に追加して、拡張を再読み込みしてください。
+ほかのドメインで使う場合は、次の 2 か所に追加して、拡張を再読み込みしてください。`manifest.json` は拡張のファイルなので、フォークを clone して書き換え、コミットしておくと更新しても消えません。
 
 1. `extension/manifest.json` の `matches`
 2. 設定ファイルの `allowedHosts`
@@ -211,9 +238,12 @@ Figma から 2x で書き出した画像は、倍率を 0.5 にするとフレ�
 - `images.json` への書き込み（`POST /api/images`）は、同じ条件を満たすページからの JSON 形式のリクエストだけを受け付け、`design-diff/` にある画像の `zoom`・`x`・`y` だけを変更します
 - 拡張が CLI に送るのはページのオリジンとパスだけで、クエリ文字列や `#` 以降は送りません
 
-
 ## 今後の拡張候補
 
 - 拡張のオプション画面からポートを変えられるようにする
 - Vite プラグイン（`apply: 'serve'` で開発時だけ読み込む）
 - Playwright と pixelmatch による差分の自動レポート
+
+## ライセンス
+
+MIT License。詳しくは [LICENSE](LICENSE) を参照してください。
