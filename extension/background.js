@@ -1,6 +1,6 @@
 /*
- * 拡張のボタンで、開いているタブにデザイン画像を重ねる・やめる。
- * ボタンで起動したタブの CLI への要求はここから送る。content script から送るとページのオリジンが付き、
+ * 拡張のボタンで、開いているタブにデザイン画像を重ねる・やめる。ページを開いただけでは重ねない。
+ * CLI への要求はここから送る。content script から送るとページのオリジンが付き、
  * CLI はローカル開発以外のページからの要求を拒否するため。
  */
 const SCRIPTS = ['overlay.js', 'content.js'];
@@ -31,7 +31,7 @@ async function run(tabId, action) {
     args: [action],
     func: (name) => {
       const loader = globalThis.__designDiffLoader;
-      return name === 'toggle' ? loader.toggle() : loader.start('extension');
+      return name === 'toggle' ? loader.toggle() : loader.start();
     },
   });
   return result?.result === true;

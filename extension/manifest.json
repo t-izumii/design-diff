@@ -10,19 +10,5 @@
   },
   "action": {
     "default_title": "Design Diff: このタブに重ねる（もう一度押すとやめる）"
-  },
-  "content_scripts": [
-    {
-      "matches": [
-        "http://localhost/*",
-        "http://127.0.0.1/*",
-        "*://*.localhost/*",
-        "*://*.local/*",
-        "*://*.test/*"
-      ],
-      "exclude_matches": ["*://*/wp-admin/*", "*://*/wp-login.php*"],
-      "js": ["overlay.js", "content.js", "autostart.js"],
-      "run_at": "document_idle"
-    }
-  ]
+  }
 }

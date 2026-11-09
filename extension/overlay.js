@@ -1,8 +1,8 @@
 /*
  * design-diff overlay
- * Chrome拡張の content script として読み込むほか、CLI の /overlay.js を script タグで読み込んでも動く。
+ * 拡張のボタンを押すと content script としてタブに読み込まれるほか、CLI の /overlay.js を script タグで読み込んでも動く。
  * content script の隔離された環境では customElements が使えないため、通常の div に Shadow DOM を付ける。
- * 拡張のボタンで起動したページでは、CLI への要求を content.js から渡された送り方（拡張のバックグラウンド経由）で送る。
+ * 拡張から読み込んだときは、CLI への要求を content.js から渡された送り方（拡張のバックグラウンド経由）で送る。
  */
 (() => {
   if (globalThis.__designDiff) return;
@@ -30,8 +30,8 @@
   // 読み込みの世代。問い合わせ中に停止したり別のページを読み込み始めたりしたら、古い応答では表示しない
   let loadSeq = 0;
 
-  // CLI への要求の送り方。既定ではページから直接送る（script タグで読み込んだ場合と、ローカル開発のページで拡張が自動で起動した場合）
-  // 拡張のボタンで起動したページでは、content.js が拡張のバックグラウンドを経由する送り方を渡す
+  // CLI への要求の送り方。既定ではページから直接送る（script タグで読み込んだ場合）
+  // 拡張から読み込んだときは、content.js が拡張のバックグラウンドを経由する送り方を渡す
   const pageTransport = {
     async getJson(url) {
       const res = await fetch(url);
@@ -613,7 +613,7 @@
     }
   `;
 
-  globalThis.__designDiff = { load, unmount, isMounted: () => current !== null };
+  globalThis.__designDiff = { load, unmount };
 
   // script タグで読み込まれた場合は、読み込み元の CLI をそのまま参照して起動する
   const script = document.currentScript;

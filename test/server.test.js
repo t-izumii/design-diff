@@ -9,7 +9,7 @@ import { startServer } from '../lib/server.js';
 
 // 1x1 の PNG
 const PNG = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=', 'base64');
-// 拡張を入れたローカル開発のページのオリジン
+// overlay.js を script タグで読み込んだローカル開発のページのオリジン
 const ORIGIN = 'http://localhost:3000';
 const JSON_POST = { method: 'POST', headers: { Origin: ORIGIN, 'Content-Type': 'application/json' } };
 // Windows ではシンボリックリンクの作成に権限が要るため省く
