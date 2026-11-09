@@ -2,7 +2,15 @@
   "manifest_version": 3,
   "name": "Design Diff Loader",
   "version": "0.1.0",
-  "description": "design-diff serve が配信するデザイン画像を、ローカル開発中のページに重ねる",
+  "description": "design-diff serve が配信するデザイン画像を、開発中のページに重ねる",
+  "permissions": ["activeTab", "scripting", "storage"],
+  "host_permissions": ["http://localhost/*", "http://127.0.0.1/*"],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "action": {
+    "default_title": "Design Diff: このタブに重ねる（もう一度押すとやめる）"
+  },
   "content_scripts": [
     {
       "matches": [
@@ -13,7 +21,7 @@
         "*://*.test/*"
       ],
       "exclude_matches": ["*://*/wp-admin/*", "*://*/wp-login.php*"],
-      "js": ["overlay.js", "content.js"],
+      "js": ["overlay.js", "content.js", "autostart.js"],
       "run_at": "document_idle"
     }
   ]
