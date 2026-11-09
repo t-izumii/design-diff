@@ -9,7 +9,7 @@ import { startServer } from '../lib/server.js';
 
 // 1x1 の PNG
 const PNG = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=', 'base64');
-// 拡張を入れたローカル開発のページのオリジン
+// overlay.js を script タグで読み込んだローカル開発のページのオリジン
 const ORIGIN = 'http://localhost:3000';
 const JSON_POST = { method: 'POST', headers: { Origin: ORIGIN, 'Content-Type': 'application/json' } };
 // Windows ではシンボリックリンクの作成に権限が要るため省く
@@ -158,4 +158,42 @@ test('.local のページは allowedHosts に書けば通り、書くまでは s
   fs.writeFileSync(path.join(dir, 'design-diff.config.json'), JSON.stringify({ allowedHosts: ['mysite.local'] }));
   assert.equal((await request(matchUrl('http://mysite.local/'), { headers })).status, 200);
   assert.equal((await request(matchUrl('http://printer.local/'), { headers: { Origin: 'http://printer.local' } })).status, 403);
+});
+
+// 拡張のバックグラウンド（background.js）が付けるヘッダー
+const FROM_EXTENSION = { 'X-Design-Diff-Client': 'extension' };
+
+test('拡張のバックグラウンドからの要求は、どの URL のページでも受け付ける', async () => {
+  const dir = makeDir({ 'index/TOP.png': null });
+  const { request } = await serve(dir);
+  // 拡張は CLI へのアクセス権を持つため、GET には Origin が付かない
+  const match = await request(matchUrl('https://staging.example.com/'), { headers: FROM_EXTENSION });
+  assert.equal(match.status, 200);
+  const image = await request(new URL(JSON.parse(match.body).images[0].src).pathname, { headers: FROM_EXTENSION });
+  assert.equal(image.status, 200);
+  assert.equal(image.headers['content-type'], 'image/png');
+
+  // POST には拡張の Origin が付く
+  const save = await request('/api/images', {
+    method: 'POST',
+    headers: { ...FROM_EXTENSION, Origin: 'chrome-extension://abcdefghijklmnopabcdefghijklmnop', 'Content-Type': 'application/json' },
+    body: JSON.stringify({ file: 'index/TOP.png', y: 3 }),
+  });
+  assert.equal(save.status, 200);
+  assert.deepEqual(JSON.parse(fs.readFileSync(path.join(dir, 'images.json'), 'utf8')), { 'index/TOP.png': { zoom: 1, x: 0, y: 3 } });
+});
+
+test('Web ページの Origin が付いた要求は、拡張のヘッダーがあってもページのドメインで判定する', async (t) => {
+  t.mock.method(console, 'warn', () => {});
+  const { request } = await serve(makeDir({ 'index/TOP.png': null }));
+  const evil = { ...FROM_EXTENSION, Origin: 'https://evil.example' };
+  assert.equal((await request(matchUrl('https://evil.example/'), { headers: evil })).status, 403);
+  assert.equal((await request('/images/index/TOP.png', { headers: evil })).status, 403);
+  // ヘッダーの付かない拡張の Origin（ほかの拡張など）も受け付けない
+  assert.equal((await request(matchUrl('https://staging.example.com/'), { headers: { Origin: 'chrome-extension://abcdefghijklmnopabcdefghijklmnop' } })).status, 403);
+  // Web ページがヘッダーを付けようとしても、プリフライトで許可しない
+  const preflight = (origin) =>
+    request(matchUrl(`${origin}/`), { method: 'OPTIONS', headers: { Origin: origin, 'Access-Control-Request-Method': 'GET', 'Access-Control-Request-Headers': 'x-design-diff-client' } });
+  assert.equal((await preflight('https://evil.example')).status, 403);
+  assert.doesNotMatch((await preflight(ORIGIN)).headers['access-control-allow-headers'] ?? '', /x-design-diff-client/i);
 });

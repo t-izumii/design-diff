@@ -1,7 +1,8 @@
 /*
  * design-diff overlay
- * Chrome拡張の content script として読み込むほか、CLI の /overlay.js を script タグで読み込んでも動く。
+ * 拡張のボタンを押すと content script としてタブに読み込まれるほか、CLI の /overlay.js を script タグで読み込んでも動く。
  * content script の隔離された環境では customElements が使えないため、通常の div に Shadow DOM を付ける。
+ * 拡張から読み込んだときは、CLI への要求を content.js から渡された送り方（拡張のバックグラウンド経由）で送る。
  */
 (() => {
   if (globalThis.__designDiff) return;
@@ -26,20 +27,37 @@
   const PANEL_MARGIN = 12;
 
   let current = null;
+  // 読み込みの世代。問い合わせ中に停止したり別のページを読み込み始めたりしたら、古い応答では表示しない
+  let loadSeq = 0;
+
+  // CLI への要求の送り方。既定ではページから直接送る（script タグで読み込んだ場合）
+  // 拡張から読み込んだときは、content.js が拡張のバックグラウンドを経由する送り方を渡す
+  const pageTransport = {
+    async getJson(url) {
+      const res = await fetch(url);
+      return res.ok ? res.json() : null;
+    },
+    async postJson(url, body, { keepalive = false } = {}) {
+      const res = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body), keepalive });
+      return res.ok;
+    },
+    // CLI の画像の URL を、そのまま img に読み込ませる
+    loadImage: async (src) => src,
+  };
 
   // クエリや # にはトークンなどが含まれうるため、照合に使うオリジンとパスだけを送る
-  async function load(server, pageUrl = location.origin + location.pathname) {
+  async function load(server, { transport = pageTransport } = {}) {
     unmount();
+    const seq = loadSeq;
+    const pageUrl = location.origin + location.pathname;
     let data;
     try {
-      const res = await fetch(`${server}/api/match?url=${encodeURIComponent(pageUrl)}`);
-      if (!res.ok) return false;
-      data = sanitize(await res.json(), server);
+      data = sanitize(await transport.getJson(`${server}/api/match?url=${encodeURIComponent(pageUrl)}`), server);
     } catch {
       return false; // CLI が起動していなければ何もしない
     }
-    if (!data) return false;
-    current = mount(data);
+    if (!data || seq !== loadSeq) return false;
+    current = mount(data, transport);
     return true;
   }
 
@@ -70,6 +88,7 @@
   }
 
   function unmount() {
+    loadSeq += 1;
     current?.destroy();
     current = null;
   }
@@ -80,7 +99,7 @@
     return Number.isFinite(n) ? Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, n)) : 1;
   }
 
-  function mount(data) {
+  function mount(data, transport) {
     const storeKey = `${STORE_PREFIX}${location.host}${data.route}`;
     // 以前の版で保存した x・y・zoom・breakpoint・fit などは読み込まない
     const stored = readStore(storeKey);
@@ -94,7 +113,8 @@
     const host = document.createElement('div');
     host.setAttribute('data-design-diff', '');
     host.style.cssText = 'position:absolute;top:0;left:0;width:0;height:0;margin:0;padding:0;border:0;';
-    const root = host.attachShadow({ mode: 'open' });
+    // 拡張のボタンでどのサイトでも起動できるため、ページのスクリプトから画像やパネルを読めないよう閉じた Shadow DOM にする
+    const root = host.attachShadow({ mode: 'closed' });
     // 画像は CORS で読み込む。CLI は Origin の付かない要求には画像を返さない
     root.innerHTML = `
       <style>${STYLE}</style>
@@ -190,14 +210,34 @@
     const currentAdjustment = () => adjustments.get(state.image);
     const currentImage = () => data.images.find((i) => i.name === state.image);
 
+    // 選んでいる画像の CLI 上の URL（読み込み中を含む）と、img に入れる URL
+    // 拡張のボタンで起動したページでは、拡張のバックグラウンドが読み込んだ data: URL を img に入れる
+    let shownSrc = '';
+    let destroyed = false;
+    const imageUrls = new Map();
+
+    async function showImage(src) {
+      if (!imageUrls.has(src)) imageUrls.set(src, transport.loadImage(src).catch(() => null));
+      const url = await imageUrls.get(src);
+      // 読み込みを待つあいだに別の画像を選んだ場合や、パネルを閉じた場合は入れない
+      if (src !== shownSrc || destroyed) return;
+      if (url) {
+        img.src = url;
+      } else {
+        imageUrls.delete(src);
+        $('.error').textContent = '画像を読み込めませんでした';
+      }
+    }
+
     function render() {
       // スクロールバーを除いた幅で配置する
       const viewport = document.documentElement.clientWidth;
       const image = currentImage();
       const adjustment = adjustments.get(image.name);
-      if (img.getAttribute('src') !== image.src) {
-        img.src = image.src;
+      if (shownSrc !== image.src) {
+        shownSrc = image.src;
         $('.error').textContent = '';
+        showImage(image.src);
       }
 
       // 1x は画像の実寸どおり。読み込み前は画面幅を仮の幅にする
@@ -264,13 +304,8 @@
       pending.delete(name);
       const { zoom, x, y } = adjustments.get(name);
       try {
-        const res = await fetch(`${data.server}/api/images`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ file: item.image.file, zoom, x, y }),
-          keepalive,
-        });
-        if (!res.ok) throw new Error(String(res.status));
+        const ok = await transport.postJson(`${data.server}/api/images`, { file: item.image.file, zoom, x, y }, { keepalive });
+        if (!ok) throw new Error('save failed');
         if (!pending.size) $('.error').textContent = '';
       } catch {
         $('.error').textContent = 'images.json に保存できませんでした。CLI が起動しているか確認してください';
@@ -362,7 +397,8 @@
       const direction = ARROWS[e.key];
       if (!direction || state.locked || e.altKey || e.ctrlKey || e.metaKey) return;
       // 入力欄や選択欄では、矢印キーを本来の操作（カーソル移動・値の増減）に使う
-      if (isEditable(e.composedPath()[0])) return;
+      // 閉じた Shadow DOM の中の欄は composedPath に出てこないため、パネル内のフォーカスは root から調べる
+      if (isEditable(root.activeElement ?? e.composedPath()[0])) return;
       e.preventDefault();
       const step = e.shiftKey ? MOVE_STEP_LARGE : MOVE_STEP;
       const { x, y } = currentAdjustment();
@@ -400,6 +436,7 @@
 
     return {
       destroy() {
+        destroyed = true;
         flushSaves();
         window.removeEventListener('keydown', onKeydown, true);
         window.removeEventListener('resize', onResize);
